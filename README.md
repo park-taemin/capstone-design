@@ -20,7 +20,7 @@ Waffle 자율주행 중
 ```
 
 ## 🗂 시스템 아키텍처
-<img width="827" height="893" alt="image" src="https://github.com/user-attachments/assets/2e57bded-bff2-4ad3-bb19-1e7c9bef117e" />
+<img width="711" height="813" alt="image" src="https://github.com/user-attachments/assets/d18fc83f-8550-48a8-88d1-1b53d31d4d55" />
 
 ![시스템 블록도](blockdiagram.png)
 

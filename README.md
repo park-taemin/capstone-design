@@ -21,52 +21,66 @@ TurtleBot3 Waffle + SO-100 로봇팔을 결합한 자율주행 기반 장애물 
 ⑧ 장애물을 집어서 측면으로 치운 뒤 원위치 복귀
 ⑨ 완료 신호 → Waffle 주행 재개
 🗂 시스템 아키텍처
-flowchart TD
+🦾 L3  SO-100 — 장애물 집어서 치우기
 
-  subgraph HW["🔧 L1  물리 환경 — 하드웨어"]
-    WAFFLE["TurtleBot3 Waffle\n자율주행 로봇 베이스"]
-    OAKD["OAK-D 카메라\nWaffle 전방 부착"]
-    RS["RealSense D435i\nSO-100 그리퍼 끝에 부착"]
-    SO100["SO-100 로봇팔\n6개의 관절로 물체를 집음"]
-  end
+🚗 L2  Waffle — 장애물까지 이동
 
-  subgraph NAV["🚗 L2  Waffle — 장애물까지 이동"]
-    A1["LiDAR로 주변 지형 지도 그리기\n장애물이 어디 있는지 파악"]
-    A2["OAK-D로 장애물 영상 촬영\nYOLOv8이 집을 수 있는 물체인지 판별"]
-    A3["OAK-D Depth로 장애물까지 거리 측정\n몇 미터 앞에 있는지 계산"]
-    A4["장애물 바로 앞까지 자율주행\n도착하면 로봇팔에게 작업 신호 전달"]
-    A1 --> A2 --> A3 --> A4
-  end
+작업 시작 신호
 
-  subgraph ARM["🦾 L3  SO-100 — 장애물 집어서 치우기"]
-    B1["RealSense로 장애물 위치 정밀 측정\n로봇팔 기준 정확한 X·Y·Z 좌표 계산"]
-    B2["로봇팔이 장애물에 닿을 수 있는\n최적의 팔 자세와 경로 계산"]
-    B3["팔을 뻗어 장애물을 집고\n옆으로 치운 뒤 원위치 복귀"]
-    B4["작업 완료 신호를 Waffle에 전달\nWaffle이 다시 주행 재개"]
-    B1 --> B2 --> B3 --> B4
-  end
+주행 재개 신호
 
-  subgraph ROS["💻 L4  ROS2 Jazzy — 두 로봇을 연결하는 소프트웨어"]
-    C1["OAK-D 영상을 받아\n장애물 종류와 위치 인식"]
-    C2["Depth 데이터로 장애물까지\n실제 거리와 방향 계산"]
-    C3["계산된 좌표를 받아\n로봇팔 6개 관절 각도 제어"]
-    C4["Waffle 이동과 로봇팔 작업을\n순서에 맞게 자동으로 전환"]
-  end
+소프트웨어로 제어
 
-  subgraph DEV["🛠 L5  개발 환경"]
-    D1["Ubuntu 24.04 네이티브\nROS2 · Isaac Sim 구동"]
-    D2["Isaac Sim으로\n로봇팔 동작 시뮬레이션 검증"]
-    D3["lerobot으로\nSO-100 서보 동작 확인 완료"]
-    D4["VSCode로 코드 작성\nUbuntu에서 직접 실행"]
-  end
+소프트웨어로 제어
 
-  HW --> NAV
-  HW --> ARM
-  A4 -->|"작업 시작 신호"| ARM
-  B4 -->|"주행 재개 신호"| NAV
-  ROS -->|"소프트웨어로 제어"| NAV
-  ROS -->|"소프트웨어로 제어"| ARM
-  DEV -->|"개발 환경 제공"| ROS
+개발 환경 제공
+
+🛠 L5 개발 환경
+
+Ubuntu 24.04 네이티브\nROS2 · Isaac Sim 구동
+
+Isaac Sim으로\n로봇팔 동작 시뮬레이션 검증
+
+lerobot으로\nSO-100 서보 동작 확인 완료
+
+VSCode로 코드 작성\nUbuntu에서 직접 실행
+
+💻 L4  ROS2 Jazzy — 두 로봇을 연결하는 소프트웨어
+
+OAK-D 영상을 받아\n장애물 종류와 위치 인식
+
+Depth 데이터로 장애물까지\n실제 거리와 방향 계산
+
+계산된 좌표를 받아\n로봇팔 6개 관절 각도 제어
+
+Waffle 이동과 로봇팔 작업을\n순서에 맞게 자동으로 전환
+
+🔧 L1 물리 환경 — 하드웨어
+
+TurtleBot3 Waffle\n자율주행 로봇 베이스
+
+OAK-D 카메라\nWaffle 전방 부착
+
+RealSense D435i\nSO-100 그리퍼 끝에 부착
+
+SO-100 로봇팔\n6개의 관절로 물체를 집음
+
+LiDAR로 주변 지형 지도 그리기\n장애물이 어디 있는지 파악
+
+OAK-D로 장애물 영상 촬영\nYOLOv8이 집을 수 있는 물체인지 판별
+
+OAK-D Depth로 장애물까지 거리 측정\n몇 미터 앞에 있는지 계산
+
+장애물 바로 앞까지 자율주행\n도착하면 로봇팔에게 작업 신호 전달
+
+RealSense로 장애물 위치 정밀 측정\n로봇팔 기준 정확한 X·Y·Z 좌표 계산
+
+로봇팔이 장애물에 닿을 수 있는\n최적의 팔 자세와 경로 계산
+
+팔을 뻗어 장애물을 집고\n옆으로 치운 뒤 원위치 복귀
+
+작업 완료 신호를 Waffle에 전달\nWaffle이 다시 주행 재개
+
 🔧 하드웨어 구성
 부품	부착 위치	역할
 TurtleBot3 Waffle	베이스	자율주행 · LiDAR 내장

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>기상·발전량 LSTM 예측 시스템</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e2e8f0;padding:24px 16px}
+h1{font-size:22px;font-weight:500;text-align:center;color:#f1f5f9;margin-bottom:4px}
+.subtitle{text-align:center;font-size:13px;color:#64748b;margin-bottom:24px}
+
+/* 탭 */
+.tabs{display:flex;gap:8px;margin-bottom:24px;justify-content:center;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:8px;border:1px solid #334155;background:#111827;color:#64748b;cursor:pointer;font-size:13px;transition:all .2s}
+.tab.active{background:#1e3a5f;color:#60a5fa;border-color:#3b82f6}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* 블록도 */
+@keyframes dash-flow{from{stroke-dashoffset:40}to{stroke-dashoffset:0}}
+@keyframes glow-border{0%,100%{stroke-width:1;stroke-opacity:.7}50%{stroke-width:2.5;stroke-opacity:1}}
+@keyframes dot-travel{0%{offset-distance:0%;opacity:0}8%{opacity:1}92%{opacity:1}100%{offset-distance:100%;opacity:0}}
+.flow-arrow{stroke-dasharray:8 5;animation:dash-flow 1.4s linear infinite;fill:none}
+.d1{animation-delay:0s}.d2{animation-delay:.28s}.d3{animation-delay:.56s}
+.d4{animation-delay:.84s}.d5{animation-delay:1.12s}.d6{animation-delay:1.4s}
+.bp rect{animation:glow-border 2.2s ease-in-out infinite}
+.bp.b1 rect{animation-delay:0s}.bp.b2 rect{animation-delay:.35s}.bp.b3 rect{animation-delay:.7s}
+.bp.b4 rect{animation-delay:1.05s}.bp.b5 rect{animation-delay:1.4s}.bp.b6 rect{animation-delay:1.75s}
+.bp.b7 rect{animation-delay:2.1s}.bp.b8 rect{animation-delay:2.45s}.bp.b9 rect{animation-delay:2.8s}
+.dot{r:5;animation:dot-travel 1.8s ease-in-out infinite}
+.dot.d1{animation-delay:0s}.dot.d2{animation-delay:.35s}.dot.d3{animation-delay:.7s}
+.dot.d4{animation-delay:1.05s}.dot.d5{animation-delay:1.4s}.dot.d6{animation-delay:1.75s}
+.lm{font-size:13px;font-weight:600;fill:#f1f5f9}
+.ls{font-size:11px;fill:#94a3b8}
+.sl{font-size:11px;fill:#475569;font-style:italic}
+svg{max-width:760px;width:100%;display:block;margin:0 auto}
+
+/* 시뮬레이션 */
+.sim-panel{background:#111827;border:1px solid #1e293b;border-radius:14px;padding:20px;margin-bottom:16px}
+.sim-title{font-size:14px;font-weight:500;color:#94a3b8;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.dot-anim{width:8px;height:8px;border-radius:50%;background:#3b82f6;animation:blink 1.4s infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+button{background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;transition:all .15s}
+button:hover{background:#273549;color:#f1f5f9}
+button.active{background:#1e3a5f;color:#60a5fa;border-color:#3b82f6}
+.progress-bar{height:6px;background:#1e293b;border-radius:3px;overflow:hidden;margin:8px 0}
+.progress-fill{height:100%;background:#3b82f6;border-radius:3px;transition:width .5s ease;width:0%}
+.log-area{background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:12px;font-family:'Courier New',monospace;font-size:11px;color:#64748b;min-height:100px;max-height:180px;overflow-y:auto;margin-top:10px;line-height:1.8}
+.lok{color:#22c55e}.linfo{color:#60a5fa}.lpred{color:#a78bfa}.lwarn{color:#f59e0b}
+.lt{color:#334155}
+.metrics-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.metric-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:12px 16px;flex:1;min-width:100px}
+.metric-label{font-size:11px;color:#475569;margin-bottom:4px}
+.metric-value{font-size:22px;font-weight:500;color:#f1f5f9}
+.metric-unit{font-size:11px;color:#64748b;margin-left:3px}
+.chart-wrap{position:relative;width:100%;height:200px;margin-top:16px}
+.forecast-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-top:12px}
+.fc{flex-shrink:0;background:#111827;border:1px solid #1e293b;border-radius:8px;padding:10px 12px;text-align:center;min-width:68px}
+.fc.now{border-color:#3b82f6;background:#0e1e2e}
+.fc-time{font-size:10px;color:#475569;margin-bottom:4px}
+.fc-val{font-size:16px;font-weight:500;color:#a78bfa}
+.fc.now .fc-val{color:#60a5fa}
+.fc-unit{font-size:10px;color:#475569}
+.section-title{font-size:13px;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin:20px 0 10px}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:16px}
+.feature-item{background:#111827;border:1px solid #1e293b;border-radius:8px;padding:10px 12px}
+.feature-name{font-size:12px;font-weight:500;color:#cbd5e1}
+.feature-src{font-size:11px;color:#475569;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+th{text-align:left;padding:8px 12px;background:#0a0f1a;color:#64748b;font-weight:400;font-size:11px;text-transform:uppercase}
+td{padding:8px 12px;border-top:1px solid #1e293b;color:#cbd5e1}
+tr:hover td{background:#111827}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500}
+.bg{background:#0d2e14;color:#4ade80;border:1px solid #166534}
+.bb{background:#0e1e2e;color:#60a5fa;border:1px solid #1e3a5f}
+.ba{background:#2a1e08;color:#fbbf24;border:1px solid #854f0b}
+</style>
+</head>
+<body>
+
+<h1>🌤️ 기상 · 발전량 LSTM 예측 시스템</h1>
+<p class="subtitle">시스템 블록도 · 동작 시뮬레이션 · 예측 결과</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('block')">📊 시스템 블록도</div>
+  <div class="tab" onclick="switchTab('sim')">⚙️ 동작 시뮬레이션</div>
+  <div class="tab" onclick="switchTab('result')">📈 예측 결과</div>
+</div>
+
+<!-- ===== TAB 1: 블록도 ===== -->
+<div id="tab-block" class="tab-content active">
+<svg viewBox="0 0 720 660" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#D85A30" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#378ADD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#7F77DD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+</defs>
+<text class="sl" x="30" y="22">① 기상 데이터 수집 경로</text>
+<g class="bp b1"><rect x="20" y="30" width="170" height="64" rx="8" fill="#0a2820" stroke="#1D9E75"/><text class="lm" x="105" y="52" text-anchor="middle">인터넷 기상 서버</text><text class="ls" x="105" y="68" text-anchor="middle">시간별 기온·습도·</text><text class="ls" x="105" y="82" text-anchor="middle">풍속·일사량 제공</text></g>
+<line class="flow-arrow d1" x1="190" y1="62" x2="248" y2="62" stroke="#1D9E75" stroke-width="2" marker-end="url(#at)"/>
+<circle class="dot d1" fill="#1D9E75" style="offset-path:path('M190 62 L248 62')"/>
+<g class="bp b2"><rect x="250" y="30" width="170" height="64" rx="8" fill="#0a2820" stroke="#1D9E75"/><text class="lm" x="335" y="52" text-anchor="middle">30일치 기상 수집</text><text class="ls" x="335" y="68" text-anchor="middle">API 호출 후</text><text class="ls" x="335" y="82" text-anchor="middle">720시간 데이터 정리</text></g>
+<line class="flow-arrow d2" x1="420" y1="62" x2="478" y2="62" stroke="#1D9E75" stroke-width="2" marker-end="url(#at)"/>
+<circle class="dot d2" fill="#1D9E75" style="offset-path:path('M420 62 L478 62')"/>
+<g class="bp b3"><rect x="480" y="30" width="220" height="64" rx="8" fill="#0b1e33" stroke="#378ADD"/><text class="lm" x="590" y="52" text-anchor="middle">데이터베이스 저장</text><text class="ls" x="590" y="68" text-anchor="middle">기상 테이블</text><text class="ls" x="590" y="82" text-anchor="middle">720행 (30일×24시간)</text></g>
+<text class="sl" x="30" y="152">② 현장 발전량 측정 경로</text>
+<g class="bp b4"><rect x="20" y="160" width="170" height="64" rx="8" fill="#2a0e08" stroke="#D85A30"/><text class="lm" x="105" y="182" text-anchor="middle">현장 측정 장치</text><text class="ls" x="105" y="198" text-anchor="middle">Arduino가 발전량·</text><text class="ls" x="105" y="212" text-anchor="middle">온도·습도 측정</text></g>
+<line class="flow-arrow d3" x1="190" y1="192" x2="248" y2="192" stroke="#D85A30" stroke-width="2" marker-end="url(#ac)"/>
+<circle class="dot d3" fill="#D85A30" style="offset-path:path('M190 192 L248 192')"/>
+<g class="bp b5"><rect x="250" y="160" width="170" height="64" rx="8" fill="#2a0e08" stroke="#D85A30"/><text class="lm" x="335" y="182" text-anchor="middle">실시간 데이터 수신</text><text class="ls" x="335" y="198" text-anchor="middle">USB 시리얼 통신으로</text><text class="ls" x="335" y="212" text-anchor="middle">1초마다 값 읽기</text></g>
+<line class="flow-arrow d4" x1="420" y1="192" x2="478" y2="192" stroke="#D85A30" stroke-width="2" marker-end="url(#ac)"/>
+<circle class="dot d4" fill="#D85A30" style="offset-path:path('M420 192 L478 192')"/>
+<g class="bp b6"><rect x="480" y="160" width="220" height="64" rx="8" fill="#0b1e33" stroke="#378ADD"/><text class="lm" x="590" y="180" text-anchor="middle">데이터베이스 저장</text><text class="ls" x="590" y="196" text-anchor="middle">발전량 테이블 →</text><text class="ls" x="590" y="212" text-anchor="middle">시간 단위로 자동 집계</text></g>
+<line class="flow-arrow d5" x1="590" y1="224" x2="590" y2="272" stroke="#378ADD" stroke-width="2" marker-end="url(#ab)"/>
+<circle class="dot d5" fill="#378ADD" style="offset-path:path('M590 224 L590 272')"/>
+<text class="sl" x="30" y="288">③ 기상 + 발전량 합치기</text>
+<g class="bp b6"><rect x="480" y="274" width="220" height="64" rx="8" fill="#0b1e33" stroke="#378ADD"/><text class="lm" x="590" y="295" text-anchor="middle">시간별 발전량 평균</text><text class="ls" x="590" y="311" text-anchor="middle">분 단위 데이터를</text><text class="ls" x="590" y="325" text-anchor="middle">1시간 단위로 묶기</text></g>
+<line class="flow-arrow d6" x1="480" y1="306" x2="422" y2="306" stroke="#378ADD" stroke-width="2" marker-end="url(#ab)"/>
+<circle class="dot d6" fill="#378ADD" style="offset-path:path('M480 306 L422 306')"/>
+<g class="bp b7"><rect x="250" y="274" width="170" height="64" rx="8" fill="#1a1a22" stroke="#64748b"/><text class="lm" x="335" y="295" text-anchor="middle">기상 + 발전량 결합</text><text class="ls" x="335" y="311" text-anchor="middle">같은 시각 기준으로</text><text class="ls" x="335" y="325" text-anchor="middle">두 데이터 합치기 (696행)</text></g>
+<line class="flow-arrow d1" x1="335" y1="338" x2="335" y2="386" stroke="#64748b" stroke-width="2" marker-end="url(#ag)"/>
+<circle class="dot d1" fill="#64748b" style="offset-path:path('M335 338 L335 386')"/>
+<text class="sl" x="30" y="403">④ 데이터 전처리 및 학습</text>
+<g class="bp b7"><rect x="250" y="390" width="170" height="64" rx="8" fill="#0d1f08" stroke="#639922"/><text class="lm" x="335" y="411" text-anchor="middle">학습 데이터 준비</text><text class="ls" x="335" y="427" text-anchor="middle">결측치 보정 후</text><text class="ls" x="335" y="441" text-anchor="middle">35시간 묶음으로 변환</text></g>
+<line class="flow-arrow d2" x1="250" y1="422" x2="192" y2="422" stroke="#639922" stroke-width="2" marker-end="url(#ag)"/>
+<circle class="dot d2" fill="#639922" style="offset-path:path('M250 422 L192 422')"/>
+<line class="flow-arrow d3" x1="420" y1="422" x2="478" y2="422" stroke="#639922" stroke-width="2" marker-end="url(#ag)"/>
+<circle class="dot d3" fill="#639922" style="offset-path:path('M420 422 L478 422')"/>
+<g class="bp b8"><rect x="20" y="390" width="170" height="64" rx="8" fill="#1a1630" stroke="#7F77DD"/><text class="lm" x="105" y="411" text-anchor="middle">빠른 예측 모델</text><text class="ls" x="105" y="427" text-anchor="middle">현재 상태 8가지로</text><text class="ls" x="105" y="441" text-anchor="middle">1시간 뒤 예측</text></g>
+<g class="bp b9"><rect x="480" y="390" width="220" height="64" rx="8" fill="#1a1630" stroke="#7F77DD"/><text class="lm" x="590" y="411" text-anchor="middle">LSTM 딥러닝 모델</text><text class="ls" x="590" y="427" text-anchor="middle">과거 35시간 패턴을</text><text class="ls" x="590" y="441" text-anchor="middle">학습해 발전량 예측</text></g>
+<line class="flow-arrow d4" x1="105" y1="454" x2="105" y2="502" stroke="#7F77DD" stroke-width="2" marker-end="url(#ap)"/>
+<circle class="dot d4" fill="#7F77DD" style="offset-path:path('M105 454 L105 502')"/>
+<line class="flow-arrow d5" x1="590" y1="454" x2="590" y2="502" stroke="#7F77DD" stroke-width="2" marker-end="url(#ap)"/>
+<circle class="dot d5" fill="#7F77DD" style="offset-path:path('M590 454 L590 502')"/>
+<text class="sl" x="30" y="520">⑤ 예측 결과 비교</text>
+<g class="bp b8"><rect x="20" y="508" width="170" height="80" rx="8" fill="#1e1a06" stroke="#EF9F27"/><text class="lm" x="105" y="530" text-anchor="middle">빠른 모델 성능</text><text class="ls" x="105" y="548" text-anchor="middle">오차 0.12 kW 수준</text><text class="ls" x="105" y="564" text-anchor="middle">정확도 98.7%</text><text class="ls" x="105" y="578" text-anchor="middle">(더미 데이터 기준)</text></g>
+<g class="bp b9"><rect x="480" y="508" width="220" height="80" rx="8" fill="#1e1a06" stroke="#EF9F27"/><text class="lm" x="590" y="530" text-anchor="middle">LSTM 모델 성능</text><text class="ls" x="590" y="548" text-anchor="middle">오차 0.26 kW 수준</text><text class="ls" x="590" y="564" text-anchor="middle">실제 데이터 누적 시</text><text class="ls" x="590" y="578" text-anchor="middle">성능 향상 기대</text></g>
+<rect x="20" y="614" width="680" height="36" rx="8" fill="#111827" stroke="#1e293b" stroke-width="0.5"/>
+<line x1="40" y1="632" x2="66" y2="632" stroke="#1D9E75" stroke-width="2" stroke-dasharray="6 3"/>
+<text style="font-size:11px;fill:#94a3b8" x="72" y="636">기상</text>
+<line x1="120" y1="632" x2="146" y2="632" stroke="#D85A30" stroke-width="2" stroke-dasharray="6 3"/>
+<text style="font-size:11px;fill:#94a3b8" x="152" y="636">발전량</text>
+<line x1="210" y1="632" x2="236" y2="632" stroke="#378ADD" stroke-width="2" stroke-dasharray="6 3"/>
+<text style="font-size:11px;fill:#94a3b8" x="242" y="636">DB 집계</text>
+<line x1="310" y1="632" x2="336" y2="632" stroke="#7F77DD" stroke-width="2" stroke-dasharray="6 3"/>
+<text style="font-size:11px;fill:#94a3b8" x="342" y="636">ML 예측</text>
+<text style="font-size:11px;fill:#475569" x="430" y="636">● 움직이는 점 = 데이터 이동 방향</text>
+</svg>
+</div>
+
+<!-- ===== TAB 2: 시뮬레이션 ===== -->
+<div id="tab-sim" class="tab-content">
+<div class="sim-panel">
+  <div class="sim-title"><span class="dot-anim" id="sdot"></span><span id="sstatus">시뮬레이션 준비 완료</span></div>
+  <div class="controls">
+    <button onclick="runWeather()" class="active">🌐 기상 수집 (30일)</button>
+    <button onclick="runModbus()">⚡ Modbus 수집</button>
+    <button onclick="runJoin()">🔗 DB JOIN 확인</button>
+    <button onclick="clearLog()">🗑️ 초기화</button>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="prog"></div></div>
+  <div class="log-area" id="log"></div>
+</div>
+
+<div class="sim-panel">
+  <div class="sim-title"><span class="dot-anim"></span><span>모델 학습 시뮬레이션</span></div>
+  <div class="controls">
+    <button onclick="runTrain()" class="active">🤖 학습 실행</button>
+    <button onclick="runForecast()">📈 발전량 예측</button>
+  </div>
+  <div class="log-area" id="tlog"></div>
+  <div id="fsec" style="display:none;margin-top:16px">
+    <div style="font-size:12px;color:#64748b;margin-bottom:6px">현재 시각 이후 12시간 예측 발전량 (kW)</div>
+    <div class="forecast-row" id="frow"></div>
+    <div class="chart-wrap"><canvas id="fchart" role="img" aria-label="LSTM 발전량 예측"></canvas></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== TAB 3: 결과 ===== -->
+<div id="tab-result" class="tab-content">
+<div class="section-title">머신러닝 입력 Feature (8개)</div>
+<div class="feature-grid">
+  <div class="feature-item"><div class="feature-name">🌡️ 기온 (temperature)</div><div class="feature-src">기상 테이블</div></div>
+  <div class="feature-item"><div class="feature-name">💧 습도 (humidity)</div><div class="feature-src">기상 테이블</div></div>
+  <div class="feature-item"><div class="feature-name">💨 풍속 (wind_speed)</div><div class="feature-src">기상 테이블</div></div>
+  <div class="feature-item"><div class="feature-name">☀️ 일사량 (solar)</div><div class="feature-src">기상 테이블</div></div>
+  <div class="feature-item"><div class="feature-name">🌧️ 강수 (precipitation)</div><div class="feature-src">기상 테이블</div></div>
+  <div class="feature-item"><div class="feature-name">⚡ 발전량 (power_kw)</div><div class="feature-src">발전량 테이블</div></div>
+  <div class="feature-item"><div class="feature-name">🌡️ 패널 온도</div><div class="feature-src">발전량 테이블</div></div>
+  <div class="feature-item"><div class="feature-name">💧 패널 습도</div><div class="feature-src">발전량 테이블</div></div>
+</div>
+
+<div class="section-title">모델 성능 비교</div>
+<div class="metrics-row">
+  <div class="metric-card"><div class="metric-label">Baseline MAE</div><div class="metric-value">0.1238<span class="metric-unit">kW</span></div></div>
+  <div class="metric-card"><div class="metric-label">Baseline R²</div><div class="metric-value">0.9870</div></div>
+  <div class="metric-card"><div class="metric-label">LSTM MAE</div><div class="metric-value">0.2639<span class="metric-unit">kW</span></div></div>
+  <div class="metric-card"><div class="metric-label">LSTM RMSE</div><div class="metric-value">0.3356<span class="metric-unit">kW</span></div></div>
+</div>
+
+<table>
+  <thead><tr><th>모델</th><th>입력 방식</th><th>MAE (kW)</th><th>R²</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge bb">Baseline</span> HistGradientBoosting</td><td>현재 시각 8가지 → 1시간 뒤 예측</td><td>0.1238</td><td>0.9870</td><td><span class="badge bg">우수</span></td></tr>
+    <tr><td><span class="badge ba">LSTM</span> Sequential(64)</td><td>과거 35시간 패턴 → 다음 예측</td><td>0.2639</td><td>—</td><td>실데이터 누적 시 향상</td></tr>
+  </tbody>
+</table>
+</div>
+
+<script>
+let fc = null;
+
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['block','sim','result'][i]===t));
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-'+t).classList.add('active');
+}
+
+function log(m,c='linfo'){
+  const el=document.getElementById('log');
+  const ts=new Date().toTimeString().slice(0,8);
+  el.innerHTML+=`<span><span class="lt">[${ts}]</span> <span class="${c}">${m}</span></span>\n`;
+  el.scrollTop=el.scrollHeight;
+}
+function tlog(m,c='linfo'){
+  const el=document.getElementById('tlog');
+  const ts=new Date().toTimeString().slice(0,8);
+  el.innerHTML+=`<span><span class="lt">[${ts}]</span> <span class="${c}">${m}</span></span>\n`;
+  el.scrollTop=el.scrollHeight;
+}
+function clearLog(){document.getElementById('log').innerHTML='';setP(0);setS('초기화 완료');}
+function setP(v){document.getElementById('prog').style.width=v+'%';}
+function setS(s){document.getElementById('sstatus').textContent=s;}
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function runWeather(){
+  clearLog(); setS('기상 수집 중...');
+  log('source=openmeteo, 날짜범위 30일');
+  await delay(300); setP(20);
+  log('Open-Meteo API 호출 중...');
+  await delay(400); setP(40);
+  log('응답 수신: 기온·습도·풍속·일사량·강수','lok');
+  await delay(300); setP(60);
+  log('10일 → 240행 누적','lok');
+  await delay(300); setP(80);
+  log('20일 → 480행 누적','lok');
+  await delay(300); setP(95);
+  log('30일 → 720행 누적','lok');
+  await delay(200); setP(100);
+  log('[OK] 저장 720건 완료','lok');
+  setS('기상 수집 완료 ✓');
+}
+
+async function runModbus(){
+  clearLog(); setS('Modbus 수집 중...');
+  log('Modbus RTU COM4@9600, slave_id=1');
+  await delay(300); setP(20);
+  log('USB 시리얼 연결 성공','lok');
+  for(let i=0;i<5;i++){
+    await delay(300);
+    const ts=new Date(Date.now()+i*1000).toTimeString().slice(0,8);
+    log(`[OK] 발전량 3.20kW, 온도 25.5℃, 습도 60.0% @ ${ts}`,'lok');
+    setP(20+i*15);
+  }
+  setP(100); log('[OK] power_realtime 저장 완료','lok');
+  setS('Modbus 수집 완료 ✓');
+}
+
+async function runJoin(){
+  clearLog(); setS('JOIN 실행 중...');
+  log('기상 테이블 + 발전량 테이블 결합 중...');
+  await delay(400); setP(40);
+  log('같은 시각 기준으로 데이터 매칭');
+  await delay(400); setP(75);
+  log('+-------------+','lok');
+  log('| joined_rows |','lok');
+  log('+-------------+','lok');
+  log('|         696 |','lok');
+  log('+-------------+','lok');
+  setP(100); log('[OK] 696행 결합 성공 — 학습 준비 완료','lok');
+  setS('JOIN 완료 ✓');
+}
+
+async function runTrain(){
+  document.getElementById('tlog').innerHTML='';
+  document.getElementById('fsec').style.display='none';
+  tlog('데이터 로드: 696행','linfo');
+  await delay(300);
+  tlog('결측치 보정 및 35시간 묶음 변환','linfo');
+  await delay(200);
+  tlog('--- 빠른 예측 모델 (Baseline) ---','linfo');
+  await delay(200);
+  tlog('학습 완료 → MAE: 0.1238 kW  R²: 0.9870','lok');
+  await delay(200);
+  tlog('--- LSTM 딥러닝 모델 ---','linfo');
+  for(let e=1;e<=8;e++){
+    await delay(200);
+    const loss=(0.045-e*0.004+Math.random()*0.002).toFixed(4);
+    const val=(0.052-e*0.003+Math.random()*0.003).toFixed(4);
+    tlog(`Epoch ${e}/8 — loss: ${loss}  val_loss: ${val}`,'lpred');
+  }
+  tlog('학습 완료 → MAE: 0.2639 kW','lok');
+  tlog('[COMPARE] Baseline: 0.1238  |  LSTM: 0.2639','lok');
+  tlog('예측 버튼을 눌러 결과를 확인하세요','linfo');
+}
+
+async function runForecast(){
+  document.getElementById('fsec').style.display='block';
+  const now=new Date();
+  const labels=[],actual=[],predicted=[];
+  const row=document.getElementById('frow');
+  row.innerHTML='';
+  for(let h=-2;h<=12;h++){
+    const t=new Date(now.getTime()+h*3600000);
+    const hh=t.getHours().toString().padStart(2,'0');
+    labels.push(`${hh}:00`);
+    const base=2.8+Math.sin(h*0.4)*0.8+(Math.random()-.5)*0.3;
+    const act=h<=0?+Math.max(0,base+0.1).toFixed(2):null;
+    const pred=h>=0?+Math.max(0,base+(Math.random()-.5)*0.4).toFixed(2):null;
+    actual.push(act);
+    predicted.push(pred);
+    if(h>=0&&h<=12){
+      const cell=document.createElement('div');
+      cell.className='fc'+(h===0?' now':'');
+      cell.innerHTML=`<div class="fc-time">${hh}:00 (${h===0?'현재':'+'+h+'h'})</div><div class="fc-val">${pred.toFixed(2)}</div><div class="fc-unit">kW</div>`;
+      row.appendChild(cell);
+    }
+  }
+  if(fc){fc.destroy();fc=null;}
+  fc=new Chart(document.getElementById('fchart'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'실측',data:actual,borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.1)',borderWidth:2,pointRadius:3,tension:.4,spanGaps:false},
+      {label:'LSTM 예측',data:predicted,borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,.1)',borderWidth:2,borderDash:[5,3],pointRadius:3,tension:.4,spanGaps:false}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#475569',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}},
+        y:{ticks:{color:'#475569',font:{size:10},callback:v=>v.toFixed(1)+'kW'},grid:{color:'rgba(255,255,255,.04)'},suggestedMin:0,suggestedMax:5}
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
